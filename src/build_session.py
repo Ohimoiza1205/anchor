@@ -312,11 +312,27 @@ def count_reps(df):
                     "gap, so this rep's numbers are a lower-confidence estimate."
                 )
 
+            # Product decision: a rep below 0.6 confidence does not count
+            # toward a personal record. A record is a claim of evidence,
+            # and a rep whose samples are partly reconstructed guesses is
+            # not evidence. Streaks and volume totals are unaffected.
+            counts_toward_pr = conf >= 0.6
+            pr_reason = None
+            if not counts_toward_pr:
+                pr_reason = (
+                    "Rep confidence is below 0.6 because part of this rep "
+                    "was reconstructed after a sensor dropout, so it does "
+                    "not count toward a personal record. It still counts "
+                    "toward volume and streaks."
+                )
+
             reps.append(
                 {
                     "t": round(float(sub["t"].iloc[p]), 2),
                     "confidence": round(conf, 3),
                     "explanation": explanation,
+                    "counts_toward_pr": counts_toward_pr,
+                    "counts_toward_pr_reason": pr_reason,
                 }
             )
 
@@ -348,7 +364,11 @@ def main():
     sets_out = count_reps(df)
     total_reps = sum(s["rep_count"] for s in sets_out)
     flagged = sum(1 for s in sets_out for r in s["reps"] if r["explanation"])
+    pr_excluded = sum(
+        1 for s in sets_out for r in s["reps"] if not r["counts_toward_pr"]
+    )
     print(f"Rep counting: {total_reps} reps detected across {len(sets_out)} sets, {flagged} flagged low-confidence")
+    print(f"PR gate: {pr_excluded} reps excluded from personal records (confidence < 0.6)")
     for s in sets_out:
         print(f"  {s['label']:20s} reps={s['rep_count']:2d} mean_conf={s['mean_confidence']:.3f}")
 
@@ -365,6 +385,7 @@ def main():
             "mean_confidence": round(float(df["confidence"].mean()), 4),
             "total_reps_detected": total_reps,
             "reps_flagged_low_confidence": flagged,
+            "reps_excluded_from_pr": pr_excluded,
         },
         "sets": sets_out,
         "samples": [

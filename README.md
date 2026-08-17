@@ -413,7 +413,15 @@ What should happen when confidence is low, by decision type:
 
 Personal records: a rep with confidence below 0.6 does not count toward
 a personal record. A record is a claim of evidence, and a rep whose
-turning point was interpolated is not evidence.
+turning point was interpolated is not evidence. This is the one policy
+in this section that is implemented rather than described: every rep in
+the pipeline output carries a `counts_toward_pr` field, with a
+`counts_toward_pr_reason` string attached when it is false. In this
+session the gate excludes 1 of 89 reps, the 0.533-confidence rep in
+`ohp-heavy1-rpe8` whose turning point fell inside a dropout. The gate
+keys on confidence only, per the stated policy; the validation
+experiment's middle-band caveat (worst-case error can hide above the
+cutoff) applies to it and is documented under Findings.
 
 Streaks and volume totals: low-confidence reps still count. The user
 did the work; the dropout is the system's failure, and punishing a
