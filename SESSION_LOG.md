@@ -121,4 +121,108 @@ established fact.
 
 Phases 10 through 14 (founder review, Q2 audit, PR-gating decision
 layer, design pass, submission review) happen after this log entry and
-are appended below when done.
+are appended below.
+
+## Phase 10: founder review
+
+`docs/FOUNDER_REVIEW.md` written as a founder would read it: reasons
+to reject, reasons to advance, follow-up questions, and a disposition
+on every criticism (fixed here, or why not fixable in take-home
+scope).
+
+The review forced one fix immediately: reconstruction error was
+measurable the whole time (the pipeline deletes samples itself and
+keeps the true values) and had never been measured. We built
+`src/validate_reconstruction.py` in this phase. Results: mean absolute
+acc_r error 0.1322 g on the 155 held-out samples, Spearman rho -0.392
+between confidence and absolute error (stronger than distance alone at
+0.184), median error 0.0 above confidence 0.6, and the worst single
+error (0.9463 g) sitting in the 0.4 to 0.6 band. Two artifacts were
+found and documented: rest-gap error is exactly 0.0 because the rest
+signal is synthetic and constant, and the confidence-to-error
+relationship is not monotonic across bands. README Findings and
+Limitations were updated; the old claim that the comparison "was not
+built" was removed because it stopped being true.
+
+Documented as unfixable in scope rather than fixed: second
+participant, hardware dropout logs, ground-truth rep counts, the
+real-time variant, user validation of the flag experience.
+
+## Phase 11: Q2 audit
+
+`docs/Q2_AUDIT.md` written against the original prompt sentence. The
+honest conclusion: "prototype" and "system" are addressed well, "own"
+is the weak word, since ownership implies accountability for behavior
+in the world and the prototype has never touched the world. The
+three-minute memory is predicted to be the deadlift story, the
+self-audit, and, less flatteringly, "all synthetic failure on one
+person's data."
+
+## Phase 12: PR gate
+
+Implemented in `src/build_session.py`: every rep now carries
+`counts_toward_pr` (confidence at or above 0.6) and a
+`counts_toward_pr_reason` string when false; meta carries
+`reps_excluded_from_pr`. Regenerated `session.json` and `viewer.html`.
+The gate excludes exactly 1 of 89 reps in this session: the
+0.533-confidence rep in `ohp-heavy1-rpe8` at t=114.6. All other
+pipeline numbers were unchanged after the edit (same seed, the dropout
+pattern is consumed before rep counting), and both analysis scripts
+still run. README Product Implications now says this policy is
+implemented, and keeps the caveat that the gate keys on confidence
+only while the worst measured error lives above the cutoff.
+
+## Phase 13: design pass on the viewer
+
+Deletion-first pass against the ten-second questions. Added: the PR
+exclusion reason line under the one gated rep, and a footer sentence
+disclosing rest compression (up to 20x). Deleted: the reconstructed
+band tooltip (duplicate of the strip tooltip), rep-mark tooltips and
+their hover affordance, and the y-axis g tick labels. Kept, each with
+a recorded reason: strip tooltip, set-label tooltip, legend, captions,
+set boundary rules, provenance footer.
+
+Correction to the Phase 7 and Phase 9 statements: the rendered page
+was observed in this phase. Headless Edge produced screenshots that
+were read back as images, twice. That inspection found a defect the
+static checks missed (the confidence-strip label clipped to
+"idence"), which was fixed and confirmed in a second render. Also
+confirmed visually: no set-label collisions across all 12 sets, strip
+and timeline aligned, reconstructed bands visible, the PR note
+rendering only under ohp 1. Remaining visual concern: the gap between
+the 0:00 tick label and the strip label is tight (roughly 12 px) and
+was only checked at one window size. We still do not claim the page
+looks good; we claim what was observed at 1400 px width.
+
+## Phase 14: submission review
+
+`docs/SUBMISSION_REVIEW.md`: what is unfinished (one decision
+consumer, no set-level aggregation, no real-time sketch, no second
+participant), what is speculative (notification policy, flag-fatigue
+argument, the whole dropout model), which claims need stronger
+evidence (89 reps, the untested turning-point error difference of
+0.1427 vs 0.1285 g, the 0.6 threshold), README length calls, and six
+remaining improvements ranked by impact, with a second-participant
+run at the top.
+
+## Left as documented limitations instead of fixed, phases 10-14
+
+- Second participant run: highest-impact remaining task, not done.
+- Turning-point error difference: no significance test; could be a
+  few lines in the validation script.
+- Streak counting: specified in Product Implications, not
+  implemented; the PR gate is the only decision consumer.
+- Real-time design: still only a named hole.
+- Key Design Decisions compression and Future Work merge: called out
+  in the submission review, README left as is in this session.
+
+## Unsure as of end of session
+
+- Whether the turning-point penalty's measured error difference would
+  survive a significance test.
+- Whether `validate_reconstruction.py`'s bit-exact reproduction of the
+  dropout pattern survives future NumPy versions (its assertions would
+  catch a divergence loudly rather than silently).
+- The viewer at window sizes other than 1400 px wide.
+- GitHub TOC anchor links in the README follow standard slugging but
+  were not clicked through.
