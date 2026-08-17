@@ -1,6 +1,8 @@
 """Generates a single self-contained HTML file that visualizes session.json.
 No build step, no server: double-click it and it opens in a browser, because
-the session data is embedded directly rather than fetched."""
+the session data is embedded directly rather than fetched. Rendering is inline
+SVG built by vanilla JS; there are no external dependencies and no network
+requests, so the output is statically inspectable."""
 
 import json
 from pathlib import Path
@@ -13,352 +15,439 @@ TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Anchor — session viewer</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<title>Anchor session viewer</title>
 <style>
   :root {
-    --bg: #15171b;
-    --panel: #1c1f24;
-    --border: #2b2f36;
-    --text: #e7e5e0;
-    --text-dim: #96999f;
-    --measured: #5c7c99;
-    --recon-high: #c9a430;
-    --recon-low: #b5504a;
-    --mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+    --bg: #fbfbfa;
+    --ink: #24272b;
+    --dim: #6b7076;
+    --measured: #45494f;
+    --recon: #b08205;
+    --flag: #a3341f;
+    --rest: #f1f0ed;
+    --rule: #d8d6d1;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
     --sans: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     background: var(--bg);
-    color: var(--text);
+    color: var(--ink);
     font-family: var(--sans);
-    padding: 32px 24px 64px;
+    font-size: 15px;
+    line-height: 1.6;
+    padding: 56px 24px 72px;
   }
-  .wrap { max-width: 980px; margin: 0 auto; }
-  header { margin-bottom: 28px; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+
+  header { margin-bottom: 56px; }
   h1 {
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 600;
     letter-spacing: -0.01em;
-    margin: 0 0 4px;
+    margin: 0 0 6px;
   }
   .subtitle {
-    color: var(--text-dim);
+    color: var(--dim);
     font-size: 14px;
-    margin: 0 0 20px;
+    margin: 0 0 32px;
+    max-width: 62ch;
   }
-  .stats {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-  .stat {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 10px 14px;
-    min-width: 108px;
-  }
+  .stats { display: flex; gap: 56px; flex-wrap: wrap; }
   .stat .value {
-    font-family: var(--mono);
-    font-size: 18px;
+    font-size: 27px;
     font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
   }
   .stat .label {
-    font-size: 11px;
-    color: var(--text-dim);
+    font-size: 12px;
+    color: var(--dim);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     margin-top: 2px;
   }
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 20px 20px 8px;
-    margin-top: 20px;
-  }
-  .panel h2 {
-    font-size: 13px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-dim);
-    margin: 0 0 14px;
+
+  section { margin-bottom: 56px; }
+  h2 {
+    font-size: 12px;
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--dim);
+    margin: 0 0 6px;
   }
-  .chart-container { position: relative; height: 340px; }
+  .caption {
+    font-size: 13px;
+    color: var(--dim);
+    margin: 0 0 16px;
+    max-width: 72ch;
+  }
+  svg { display: block; width: 100%; height: auto; }
   .legend {
     display: flex;
-    gap: 18px;
-    margin: 14px 0 4px;
-    font-size: 12px;
-    color: var(--text-dim);
+    gap: 22px;
     flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--dim);
+    margin-top: 10px;
   }
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
-  .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
-  .rep-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 10px;
-    margin-top: 4px;
-  }
-  .set-card {
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 12px 14px;
-  }
-  .set-card .set-name {
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 6px;
-  }
-  .set-card .set-meta {
+  .swatch { display: inline-block; width: 12px; height: 3px; }
+  .swatch.tick { width: 2px; height: 10px; }
+
+  .rep-mark:hover { stroke-width: 2.5; }
+
+  .flag-row { margin-bottom: 22px; }
+  .flag-row .flag-meta {
     font-family: var(--mono);
-    font-size: 12px;
-    color: var(--text-dim);
+    font-size: 13px;
   }
-  .rep-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-right: 3px;
+  .flag-row .flag-meta .conf { color: var(--flag); }
+  .flag-row p {
+    margin: 2px 0 0;
+    font-size: 14px;
+    color: #3c4046;
+    max-width: 72ch;
   }
-  .explain {
-    margin-top: 8px;
-    font-size: 12px;
-    color: #d8b979;
-    line-height: 1.5;
-    padding-top: 8px;
-    border-top: 1px solid var(--border);
-  }
+
   footer {
-    margin-top: 28px;
-    font-size: 12px;
-    color: var(--text-dim);
-    line-height: 1.6;
+    font-size: 12.5px;
+    color: var(--dim);
+    line-height: 1.7;
+    max-width: 76ch;
   }
-  footer a { color: var(--measured); }
+  footer p { margin: 0 0 8px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>Anchor</h1>
-    <p class="subtitle">Confidence-aware reconstruction of a wrist-worn training session. Participant A, __SESSION_DATE__, __N_SETS__ sets.</p>
+    <p class="subtitle" id="subtitle"></p>
     <div class="stats" id="stats"></div>
   </header>
 
-  <div class="panel">
+  <section>
     <h2>Session timeline</h2>
+    <p class="caption" id="timelineCaption"></p>
+    <div id="timeline"></div>
     <div class="legend">
-      <span><i class="swatch" style="background:var(--measured)"></i>Measured</span>
-      <span><i class="swatch" style="background:var(--recon-high)"></i>Reconstructed, confidence ≥ 0.6</span>
-      <span><i class="swatch" style="background:var(--recon-low)"></i>Reconstructed, confidence &lt; 0.6</span>
-      <span><i class="swatch" style="background:#4a4d54"></i>Rep marker (hover for detail)</span>
+      <span><i class="swatch" style="background:var(--measured)"></i>measured</span>
+      <span><i class="swatch" style="background:var(--recon)"></i>reconstructed, confidence 0.6 or higher</span>
+      <span><i class="swatch" style="background:var(--flag)"></i>reconstructed, confidence below 0.6</span>
+      <span><i class="swatch tick" style="background:var(--measured)"></i>rep</span>
+      <span><i class="swatch tick" style="background:var(--flag)"></i>flagged rep</span>
     </div>
-    <div class="chart-container"><canvas id="chart"></canvas></div>
-  </div>
+  </section>
 
-  <div class="panel">
-    <h2>Reps by set</h2>
-    <div class="rep-grid" id="repGrid"></div>
-  </div>
+  <section>
+    <h2>Flagged reps</h2>
+    <p class="caption">Reps where the reconstruction overlaps a moment the rep detector depends on. Explanations are taken verbatim from the pipeline output.</p>
+    <div id="flagList"></div>
+  </section>
 
   <footer>
-    Source recordings: SmartLift-Analysis-Project (open dataset, wrist-worn
-    MetaMotion sensor). Dropouts, reconstruction, and confidence scoring are
-    synthetic, applied on top of measured accelerometer and gyroscope data.
-    See README.md and data/SOURCE.md for the full pipeline and its
-    limitations.
+    <p id="countsNote"></p>
+    <p id="sourceNote"></p>
   </footer>
 </div>
 
 <script>
 const SESSION = __SESSION_JSON__;
 
-function fmtTime(s) {
-  const m = Math.floor(s / 60);
-  const sec = Math.round(s % 60).toString().padStart(2, "0");
-  return m + ":" + sec;
-}
-
-function confColor(sample) {
-  if (sample.is_real) return getComputedStyle(document.documentElement).getPropertyValue("--measured").trim();
-  return sample.confidence >= 0.6
-    ? getComputedStyle(document.documentElement).getPropertyValue("--recon-high").trim()
-    : getComputedStyle(document.documentElement).getPropertyValue("--recon-low").trim();
-}
-
-// --- stats header ---
 const meta = SESSION.meta;
-const stats = [
-  ["Duration", fmtTime(meta.duration_s)],
-  ["Sets", meta.n_sets],
-  ["Reps detected", meta.total_reps_detected],
-  ["Dropout", (meta.dropout_fraction * 100).toFixed(1) + "%"],
-  ["Mean confidence", meta.mean_confidence.toFixed(3)],
-  ["Flagged reps", meta.reps_flagged_low_confidence],
-];
-document.getElementById("stats").innerHTML = stats.map(
-  ([label, value]) => `<div class="stat"><div class="value">${value}</div><div class="label">${label}</div></div>`
-).join("");
+const samples = SESSION.samples;
 
-// --- exercise segments, for background bands ---
-const segments = [];
-{
-  let curLabel = null, curStart = null, prevT = null;
-  for (const s of SESSION.samples) {
-    if (s.label !== curLabel) {
-      if (curLabel !== null && curLabel !== "rest") {
-        segments.push({ label: curLabel, start: curStart, end: prevT });
-      }
-      curLabel = s.label;
-      curStart = s.t;
-    }
-    prevT = s.t;
-  }
-  if (curLabel !== "rest") segments.push({ label: curLabel, start: curStart, end: prevT });
+function fmtTime(s) {
+  let m = Math.floor(s / 60);
+  let sec = Math.round(s % 60);
+  if (sec === 60) { m += 1; sec = 0; }
+  return m + ":" + String(sec).padStart(2, "0");
 }
 
-const bandPlugin = {
-  id: "exerciseBands",
-  beforeDatasetsDraw(chart) {
-    const { ctx, chartArea, scales } = chart;
-    if (!chartArea) return;
-    ctx.save();
-    segments.forEach((seg, i) => {
-      const x1 = scales.x.getPixelForValue(seg.start);
-      const x2 = scales.x.getPixelForValue(seg.end);
-      ctx.fillStyle = i % 2 === 0 ? "rgba(255,255,255,0.025)" : "rgba(255,255,255,0.005)";
-      ctx.fillRect(x1, chartArea.top, x2 - x1, chartArea.bottom - chartArea.top);
-      ctx.fillStyle = "rgba(231,229,224,0.35)";
-      ctx.font = "10px " + getComputedStyle(document.body).fontFamily;
-      ctx.save();
-      ctx.translate((x1 + x2) / 2, chartArea.top + 10);
-      ctx.textAlign = "center";
-      ctx.fillText(seg.label.split("-")[0], 0, 0);
-      ctx.restore();
-    });
-    ctx.restore();
-  }
+const css = (name) =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const C = {
+  measured: css("--measured"),
+  recon: css("--recon"),
+  flag: css("--flag"),
+  rest: css("--rest"),
+  rule: css("--rule"),
+  dim: css("--dim"),
+  bg: css("--bg"),
 };
 
-// --- main trace + rep markers ---
-const traceData = SESSION.samples.map(s => ({ x: s.t, y: s.acc_r, sample: s }));
+// ---------- derived data ----------
 
-const yMax = Math.max(...SESSION.samples.map(s => s.acc_r)) + 0.4;
-const repPoints = [];
-SESSION.sets.forEach(set => {
-  set.reps.forEach(r => {
-    repPoints.push({
-      x: r.t,
-      y: yMax,
-      confidence: r.confidence,
-      explanation: r.explanation,
-      label: set.label,
-    });
+// Short display labels: exercise name plus a per-exercise counter in session
+// order, e.g. "ohp 3". Raw labels are kept for tooltips and the flagged list.
+const shortLabels = (() => {
+  const counts = {};
+  return SESSION.sets.map((set) => {
+    const name = set.label.split("-")[0];
+    counts[name] = (counts[name] || 0) + 1;
+    return name + " " + counts[name];
+  });
+})();
+const shortByLabel = {};
+SESSION.sets.forEach((set, i) => { shortByLabel[set.label] = shortLabels[i]; });
+
+// Contiguous runs of identical label (sets and rest periods).
+const labelRuns = [];
+for (const s of samples) {
+  const last = labelRuns[labelRuns.length - 1];
+  if (last && last.label === s.label) last.end = s.t;
+  else labelRuns.push({ label: s.label, start: s.t, end: s.t });
+}
+const setRuns = labelRuns.filter((r) => r.label !== "rest");
+const restRuns = labelRuns.filter((r) => r.label === "rest");
+
+// Contiguous runs of reconstructed samples, with min confidence per run.
+const reconRuns = [];
+for (const s of samples) {
+  if (s.is_real) continue;
+  const last = reconRuns[reconRuns.length - 1];
+  if (last && s.t - last.end <= 0.15) {
+    last.end = s.t;
+    last.min = Math.min(last.min, s.confidence);
+  } else {
+    reconRuns.push({ start: s.t, end: s.t, min: s.confidence });
+  }
+}
+
+// Trace split into runs of one drawing class, repeating the boundary sample
+// so the polyline stays continuous.
+const clsOf = (s) => (s.is_real ? 0 : (s.confidence >= 0.6 ? 1 : 2));
+const traceRuns = [];
+{
+  let run = null;
+  for (const s of samples) {
+    const c = clsOf(s);
+    if (!run || run.c !== c) {
+      const next = { c: c, pts: [] };
+      if (run) next.pts.push(run.pts[run.pts.length - 1]);
+      traceRuns.push(next);
+      run = next;
+    }
+    run.pts.push(s);
+  }
+}
+
+const allReps = [];
+SESSION.sets.forEach((set, i) => {
+  set.reps.forEach((r) => {
+    allReps.push({ short: shortLabels[i], rawLabel: set.label, rep: r });
   });
 });
+const flaggedReps = allReps.filter((x) => x.rep.explanation);
 
-const ctx = document.getElementById("chart").getContext("2d");
-new Chart(ctx, {
-  type: "line",
-  data: {
-    datasets: [
-      {
-        label: "acc_r",
-        data: traceData,
-        borderWidth: 1.5,
-        pointRadius: 0,
-        tension: 0,
-        segment: {
-          borderColor: (c) => confColor(traceData[c.p1DataIndex].sample),
-        },
-      },
-      {
-        type: "scatter",
-        label: "reps",
-        data: repPoints,
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        pointBackgroundColor: (c) => {
-          const p = c.raw;
-          if (!p) return "#888";
-          return p.confidence >= 0.6
-            ? getComputedStyle(document.documentElement).getPropertyValue("--recon-high").trim()
-            : (p.confidence < 0.6 && p.explanation
-                ? getComputedStyle(document.documentElement).getPropertyValue("--recon-low").trim()
-                : "#4a4d54");
-        },
-        pointBorderWidth: 0,
-      },
-    ],
-  },
-  options: {
-    animation: false,
-    interaction: { mode: "nearest", intersect: true },
-    scales: {
-      x: {
-        type: "linear",
-        min: 0,
-        max: SESSION.meta.duration_s,
-        ticks: {
-          color: "#96999f",
-          callback: (v) => fmtTime(v),
-        },
-        grid: { color: "rgba(255,255,255,0.05)" },
-      },
-      y: {
-        title: { display: true, text: "acceleration magnitude (g)", color: "#96999f", font: { size: 11 } },
-        ticks: { color: "#96999f" },
-        grid: { color: "rgba(255,255,255,0.05)" },
-      },
-    },
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        callbacks: {
-          title: (items) => fmtTime(items[0].raw.x),
-          label: (item) => {
-            if (item.dataset.label === "reps") {
-              const p = item.raw;
-              const lines = [`${p.label} — confidence ${p.confidence.toFixed(2)}`];
-              if (p.explanation) lines.push(p.explanation);
-              return lines;
-            }
-            const s = item.raw.sample;
-            return `${s.is_real ? "measured" : "reconstructed"} — confidence ${s.confidence.toFixed(2)}`;
-          },
-        },
-      },
-    },
-  },
-  plugins: [bandPlugin],
+const totalN = samples.length;
+const reconN = samples.filter((s) => !s.is_real).length;
+const reconPct = (100 * reconN / totalN).toFixed(1);
+
+// ---------- header ----------
+
+document.getElementById("subtitle").textContent =
+  "A training session reconstructed from wrist sensor data, with a confidence score on every sample and every detected rep. Participant " +
+  meta.participant + ", " + meta.session_date + ", " + meta.n_sets + " sets.";
+
+const stats = [
+  [fmtTime(meta.duration_s), "duration"],
+  [String(meta.total_reps_detected), "reps detected"],
+  [reconPct + "%", "samples reconstructed"],
+  [String(meta.reps_flagged_low_confidence), "reps flagged"],
+];
+document.getElementById("stats").innerHTML = stats
+  .map(([v, l]) => '<div class="stat"><div class="value">' + v +
+    '</div><div class="label">' + l + "</div></div>")
+  .join("");
+
+document.getElementById("timelineCaption").textContent =
+  "Acceleration magnitude (g) at " + meta.resample_hz +
+  " Hz. Shaded vertical bands mark reconstructed stretches, dimmed background marks rest, ticks along the top mark detected reps. The strip underneath is per-sample confidence: full height means 1.0, notches show where and how far it drops.";
+
+// ---------- timeline SVG ----------
+
+const NS = "http://www.w3.org/2000/svg";
+function el(name, attrs, parent) {
+  const e = document.createElementNS(NS, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function addTitle(node, text) {
+  const t = document.createElementNS(NS, "title");
+  t.textContent = text;
+  node.appendChild(t);
+}
+
+const W = 1000, H = 306;
+const mL = 40, mR = 10;
+const plotTop = 34, plotBot = 226;
+const stripTop = 268, stripH = 28;
+const dur = meta.duration_s;
+
+const px = (t) => mL + (t / dur) * (W - mL - mR);
+const accVals = samples.map((s) => s.acc_r);
+const vLo = Math.min.apply(null, accVals);
+const vHi = Math.max.apply(null, accVals);
+const vPad = 0.06 * (vHi - vLo);
+const lo = vLo - vPad, hi = vHi + vPad;
+const py = (v) => plotBot - ((v - lo) / (hi - lo)) * (plotBot - plotTop);
+
+const svg = el("svg", {
+  viewBox: "0 0 " + W + " " + H,
+  role: "img",
+  "aria-label": "Session timeline: acceleration trace with reconstructed regions, set boundaries, rep markers, and a per-sample confidence strip",
+});
+document.getElementById("timeline").appendChild(svg);
+
+// Rest periods: quiet dimmed background.
+for (const r of restRuns) {
+  el("rect", {
+    x: px(r.start).toFixed(2), y: plotTop,
+    width: Math.max(px(r.end) - px(r.start), 0.5).toFixed(2),
+    height: plotBot - plotTop,
+    fill: C.rest,
+  }, svg);
+}
+
+// Reconstructed regions: shaded band behind the trace, stronger when the
+// run's minimum confidence is below 0.6.
+for (const r of reconRuns) {
+  let x1 = px(r.start), x2 = px(r.end);
+  if (x2 - x1 < 2) { const c = (x1 + x2) / 2; x1 = c - 1; x2 = c + 1; }
+  const low = r.min < 0.6;
+  const band = el("rect", {
+    x: x1.toFixed(2), y: plotTop,
+    width: (x2 - x1).toFixed(2), height: plotBot - plotTop,
+    fill: low ? C.flag : C.recon,
+    "fill-opacity": low ? 0.28 : 0.16,
+  }, svg);
+  addTitle(band, "reconstructed " + fmtTime(r.start) + " to " + fmtTime(r.end) +
+    ", min confidence " + r.min.toFixed(2));
+}
+
+// Axes: recessive baseline, x ticks each minute, y ticks at whole g values.
+el("line", { x1: mL, y1: plotBot, x2: W - mR, y2: plotBot, stroke: C.rule, "stroke-width": 1 }, svg);
+for (let t = 0; t <= dur; t += 60) {
+  const x = px(t).toFixed(2);
+  el("line", { x1: x, y1: plotBot, x2: x, y2: plotBot + 5, stroke: C.rule, "stroke-width": 1 }, svg);
+  el("text", {
+    x: x, y: plotBot + 20, "text-anchor": "middle",
+    "font-size": 11, fill: C.dim,
+  }, svg).textContent = fmtTime(t);
+}
+for (let v = Math.ceil(lo); v <= Math.floor(hi); v += 1) {
+  const y = py(v).toFixed(2);
+  el("line", { x1: mL - 5, y1: y, x2: mL, y2: y, stroke: C.rule, "stroke-width": 1 }, svg);
+  el("text", {
+    x: mL - 9, y: y, "text-anchor": "end", "dominant-baseline": "middle",
+    "font-size": 11, fill: C.dim,
+  }, svg).textContent = v;
+}
+
+// Set boundaries: thin vertical rules with small labels, alternating between
+// two rows so adjacent labels do not collide.
+setRuns.forEach((seg, i) => {
+  const x1 = px(seg.start), x2 = px(seg.end);
+  for (const x of [x1, x2]) {
+    el("line", {
+      x1: x.toFixed(2), y1: 28, x2: x.toFixed(2), y2: plotBot,
+      stroke: C.rule, "stroke-width": 1,
+    }, svg);
+  }
+  const label = el("text", {
+    x: Math.min(x1 + 3, W - mR - 44).toFixed(2),
+    y: i % 2 === 0 ? 12 : 24,
+    "font-size": 10.5, fill: C.dim,
+  }, svg);
+  label.textContent = shortByLabel[seg.label] || seg.label;
+  addTitle(label, seg.label);
 });
 
-// --- rep grid below chart ---
-const grid = document.getElementById("repGrid");
-grid.innerHTML = SESSION.sets.map(set => {
-  const dots = set.reps.map(r => {
-    const color = r.confidence >= 0.6 ? "var(--recon-high)" : (r.explanation ? "var(--recon-low)" : "var(--measured)");
-    const c = r.confidence === 1 ? "var(--measured)" : color;
-    return `<span class="rep-dot" style="background:${c}" title="${r.confidence.toFixed(2)}"></span>`;
-  }).join("");
-  const flagged = set.reps.filter(r => r.explanation);
-  const explainHtml = flagged.length
-    ? `<div class="explain">${flagged.map(r => `t=${fmtTime(r.t)}: ${r.explanation}`).join("<br>")}</div>`
-    : "";
-  return `<div class="set-card">
-    <div class="set-name">${set.label}</div>
-    <div class="set-meta">${set.rep_count} reps · mean confidence ${set.mean_confidence.toFixed(3)}</div>
-    <div style="margin-top:8px">${dots}</div>
-    ${explainHtml}
-  </div>`;
-}).join("");
+// Acceleration trace, one polyline per confidence class.
+const traceStyle = [
+  { stroke: C.measured, width: 1 },
+  { stroke: C.recon, width: 1.4 },
+  { stroke: C.flag, width: 1.4 },
+];
+for (const run of traceRuns) {
+  const st = traceStyle[run.c];
+  el("polyline", {
+    points: run.pts.map((s) => px(s.t).toFixed(2) + "," + py(s.acc_r).toFixed(2)).join(" "),
+    fill: "none",
+    stroke: st.stroke,
+    "stroke-width": st.width,
+    "stroke-linejoin": "round",
+    "stroke-linecap": "round",
+  }, svg);
+}
+
+// Rep markers: short ticks hanging from the top of the plot. Flagged reps
+// are longer, heavier, and in the flag color.
+for (const { short, rep } of allReps) {
+  const flagged = !!rep.explanation;
+  const x = px(rep.t).toFixed(2);
+  const mark = el("line", {
+    class: "rep-mark",
+    x1: x, y1: 36, x2: x, y2: flagged ? 52 : 44,
+    stroke: flagged ? C.flag : C.measured,
+    "stroke-width": flagged ? 1.8 : 1,
+  }, svg);
+  let tip = short + ", rep at " + fmtTime(rep.t) + ", confidence " + rep.confidence.toFixed(2);
+  if (flagged) tip += ". " + rep.explanation;
+  addTitle(mark, tip);
+}
+
+// Confidence strip, time-aligned under the trace. A solid bar at full height
+// is confidence 1.0; reconstructed runs are cut down to their confidence.
+el("text", {
+  x: mL - 9, y: stripTop + stripH / 2, "text-anchor": "end",
+  "dominant-baseline": "middle", "font-size": 11, fill: C.dim,
+}, svg).textContent = "confidence";
+el("rect", {
+  x: mL, y: stripTop, width: W - mL - mR, height: stripH, fill: "#565b61",
+}, svg);
+for (const r of reconRuns) {
+  let x1 = px(r.start), x2 = px(r.end);
+  if (x2 - x1 < 2) { const c = (x1 + x2) / 2; x1 = c - 1; x2 = c + 1; }
+  el("rect", {
+    x: x1.toFixed(2), y: stripTop,
+    width: (x2 - x1).toFixed(2), height: stripH, fill: C.bg,
+  }, svg);
+  const h = Math.max(r.min * stripH, 1);
+  const bar = el("rect", {
+    x: x1.toFixed(2), y: (stripTop + stripH - h).toFixed(2),
+    width: (x2 - x1).toFixed(2), height: h.toFixed(2),
+    fill: r.min < 0.6 ? C.flag : C.recon,
+  }, svg);
+  addTitle(bar, "confidence drops to " + r.min.toFixed(2) + " at " + fmtTime(r.start));
+}
+
+// ---------- flagged reps ----------
+
+document.getElementById("flagList").innerHTML = flaggedReps
+  .map(({ short, rawLabel, rep }) => {
+    return '<div class="flag-row">' +
+      '<div class="flag-meta">' + short + " (" + rawLabel + ") · " +
+      fmtTime(rep.t) + ' · confidence <span class="conf">' +
+      rep.confidence.toFixed(2) + "</span></div>" +
+      "<p>" + rep.explanation + "</p></div>";
+  })
+  .join("");
+
+// ---------- footer ----------
+
+document.getElementById("countsNote").textContent =
+  (totalN - reconN) + " of " + totalN + " samples are direct sensor readings; " +
+  reconN + " samples (" + reconPct + "%) were reconstructed across dropout gaps. " +
+  "Confidence is a heuristic score and is uncalibrated: use it to rank uncertainty within this session, not as a probability.";
+document.getElementById("sourceNote").textContent =
+  "Source recordings: " + meta.source +
+  ". Dropouts, reconstruction, and confidence scoring are synthetic, applied on top of measured accelerometer and gyroscope data. See README.md and data/SOURCE.md for the pipeline and its limitations.";
 </script>
 </body>
 </html>
@@ -370,8 +459,6 @@ def main():
         session = json.load(f)
 
     html = TEMPLATE.replace("__SESSION_JSON__", json.dumps(session))
-    html = html.replace("__SESSION_DATE__", session["meta"]["session_date"])
-    html = html.replace("__N_SETS__", str(session["meta"]["n_sets"]))
 
     OUT_PATH.write_text(html, encoding="utf-8")
     print(f"Wrote {OUT_PATH} ({OUT_PATH.stat().st_size / 1024:.0f} KB)")
