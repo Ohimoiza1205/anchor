@@ -97,8 +97,6 @@ TEMPLATE = """<!DOCTYPE html>
   .swatch { display: inline-block; width: 12px; height: 3px; }
   .swatch.tick { width: 2px; height: 10px; }
 
-  .rep-mark:hover { stroke-width: 2.5; }
-
   .flag-row { margin-bottom: 22px; }
   .flag-row .flag-meta {
     font-family: var(--mono);
@@ -110,6 +108,10 @@ TEMPLATE = """<!DOCTYPE html>
     font-size: 14px;
     color: #3c4046;
     max-width: 72ch;
+  }
+  .flag-row .pr-note {
+    font-size: 13px;
+    color: var(--dim);
   }
 
   footer {
@@ -320,17 +322,16 @@ for (const r of reconRuns) {
   let x1 = px(r.start), x2 = px(r.end);
   if (x2 - x1 < 2) { const c = (x1 + x2) / 2; x1 = c - 1; x2 = c + 1; }
   const low = r.min < 0.6;
-  const band = el("rect", {
+  el("rect", {
     x: x1.toFixed(2), y: plotTop,
     width: (x2 - x1).toFixed(2), height: plotBot - plotTop,
     fill: low ? C.flag : C.recon,
     "fill-opacity": low ? 0.28 : 0.16,
   }, svg);
-  addTitle(band, "reconstructed " + fmtTime(r.start) + " to " + fmtTime(r.end) +
-    ", min confidence " + r.min.toFixed(2));
 }
 
-// Axes: recessive baseline, x ticks each minute, y ticks at whole g values.
+// Axes: recessive baseline, x ticks each minute. No y ticks: the trace shape,
+// not the absolute g value, is what carries meaning here.
 el("line", { x1: mL, y1: plotBot, x2: W - mR, y2: plotBot, stroke: C.rule, "stroke-width": 1 }, svg);
 for (let t = 0; t <= dur; t += 60) {
   const x = px(t).toFixed(2);
@@ -339,14 +340,6 @@ for (let t = 0; t <= dur; t += 60) {
     x: x, y: plotBot + 20, "text-anchor": "middle",
     "font-size": 11, fill: C.dim,
   }, svg).textContent = fmtTime(t);
-}
-for (let v = Math.ceil(lo); v <= Math.floor(hi); v += 1) {
-  const y = py(v).toFixed(2);
-  el("line", { x1: mL - 5, y1: y, x2: mL, y2: y, stroke: C.rule, "stroke-width": 1 }, svg);
-  el("text", {
-    x: mL - 9, y: y, "text-anchor": "end", "dominant-baseline": "middle",
-    "font-size": 11, fill: C.dim,
-  }, svg).textContent = v;
 }
 
 // Set boundaries: thin vertical rules with small labels, alternating between
@@ -388,25 +381,20 @@ for (const run of traceRuns) {
 
 // Rep markers: short ticks hanging from the top of the plot. Flagged reps
 // are longer, heavier, and in the flag color.
-for (const { short, rep } of allReps) {
+for (const { rep } of allReps) {
   const flagged = !!rep.explanation;
   const x = px(rep.t).toFixed(2);
-  const mark = el("line", {
-    class: "rep-mark",
+  el("line", {
     x1: x, y1: 36, x2: x, y2: flagged ? 52 : 44,
     stroke: flagged ? C.flag : C.measured,
     "stroke-width": flagged ? 1.8 : 1,
   }, svg);
-  let tip = short + ", rep at " + fmtTime(rep.t) + ", confidence " + rep.confidence.toFixed(2);
-  if (flagged) tip += ". " + rep.explanation;
-  addTitle(mark, tip);
 }
 
 // Confidence strip, time-aligned under the trace. A solid bar at full height
 // is confidence 1.0; reconstructed runs are cut down to their confidence.
 el("text", {
-  x: mL - 9, y: stripTop + stripH / 2, "text-anchor": "end",
-  "dominant-baseline": "middle", "font-size": 11, fill: C.dim,
+  x: mL, y: stripTop - 6, "font-size": 11, fill: C.dim,
 }, svg).textContent = "confidence";
 el("rect", {
   x: mL, y: stripTop, width: W - mL - mR, height: stripH, fill: "#565b61",
@@ -431,11 +419,15 @@ for (const r of reconRuns) {
 
 document.getElementById("flagList").innerHTML = flaggedReps
   .map(({ short, rawLabel, rep }) => {
-    return '<div class="flag-row">' +
+    let row = '<div class="flag-row">' +
       '<div class="flag-meta">' + short + " (" + rawLabel + ") · " +
       fmtTime(rep.t) + ' · confidence <span class="conf">' +
       rep.confidence.toFixed(2) + "</span></div>" +
-      "<p>" + rep.explanation + "</p></div>";
+      "<p>" + rep.explanation + "</p>";
+    if (!rep.counts_toward_pr && rep.counts_toward_pr_reason) {
+      row += '<p class="pr-note">' + rep.counts_toward_pr_reason + "</p>";
+    }
+    return row + "</div>";
   })
   .join("");
 
@@ -444,7 +436,8 @@ document.getElementById("flagList").innerHTML = flaggedReps
 document.getElementById("countsNote").textContent =
   (totalN - reconN) + " of " + totalN + " samples are direct sensor readings; " +
   reconN + " samples (" + reconPct + "%) were reconstructed across dropout gaps. " +
-  "Confidence is a heuristic score and is uncalibrated: use it to rank uncertainty within this session, not as a probability.";
+  "Confidence is a heuristic score and is uncalibrated: use it to rank uncertainty within this session, not as a probability. " +
+  "Rest periods are compressed from the original recording (up to 20x), so displayed times are not elapsed gym time.";
 document.getElementById("sourceNote").textContent =
   "Source recordings: " + meta.source +
   ". Dropouts, reconstruction, and confidence scoring are synthetic, applied on top of measured accelerometer and gyroscope data. See README.md and data/SOURCE.md for the pipeline and its limitations.";
