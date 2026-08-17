@@ -20,11 +20,43 @@ result with the same certainty as measured data.
 
 ## Why This Problem Matters
 
-Dropouts are more likely at the moments a rep is decided: the bottom of a
-squat, the lockout of a deadlift. A pipeline that does not distinguish
-measured samples from reconstructed samples cannot tell a user, or a
-downstream model, when a rep count or a metric is based on a guess rather
-than a reading.
+Everything in this section is grounded in what this prototype produced;
+none of it is a claim about any specific product.
+
+People make decisions from workout numbers: whether to add weight,
+whether a set counted, whether today beat last week. Those numbers come
+from measurements that are imperfect in ways the display does not show.
+In this session, 155 of 4766 samples were reconstructions rather than
+readings, and the reconstructed portions averaged 0.531 confidence while
+the display-ready trace through them looked as smooth as the measured
+parts. A user acting on that trace is acting on a guess without knowing
+it.
+
+Exercise data gets treated as objective truth once it is a number on a
+screen. The deadlift case shows why that is dangerous: the detector
+returned 20 reps for an 11-rep set, and nothing about the number looked
+wrong. It was not an error state, it was a wrong answer formatted
+exactly like a right one. Any feature that consumed that count, a
+history view, a volume total, a progress trend, would have inherited the
+error silently.
+
+Uncertainty compounds when features build on reconstructed data. Rep
+counting here runs on the reconstructed stream, so a dropout does not
+stay a sample-level problem: it becomes a rep-level problem (four reps
+in this session carry flags because a gap landed inside their window),
+and would become a set-level and session-level problem in anything
+aggregating further. The bench set shows the subtler version: the
+lowest-confidence gap in the session (mean 0.207) fell between reps, so
+the per-rep numbers look perfect while the set contains a stretch of
+data that is mostly guess. Aggregates built without confidence
+information cannot distinguish these two situations.
+
+Confidence itself can be a signal other features consume. In this
+prototype, per-sample confidence already drives three things: rep-level
+flags, the one-line explanations attached to suspect reps, and the
+per-rep values shown in the viewer. The same number could gate anything
+downstream that is about to trust a reconstructed region, which is what
+the Product Implications section is about.
 
 ## Approach
 
