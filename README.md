@@ -302,6 +302,55 @@ output, including benign ones. Whether rest-period gaps should be
 exempted from downstream penalties is a product decision, discussed
 under Product Implications; the pipeline itself does not exempt them.
 
+## Product Implications
+
+If this pipeline lived inside a shipping product, here is what we think
+should change, stated as decisions rather than options.
+
+What changes for the user: rep counts stop being bare numbers. A rep
+that spans a reconstructed region shows its confidence and a one-line
+reason, and the session view distinguishes measured from reconstructed
+stretches. The user's mental model shifts from "the watch counted 9" to
+"the watch measured 8 and estimated 1," which is the true state of the
+data in a session like this one.
+
+What changes for downstream systems: every sample and every rep carries
+`is_real` and `confidence` fields, and consumers are expected to have an
+explicit policy for low-confidence input rather than a default of
+treating everything as measured. The bench case is the reason the fields
+must travel with the data: a consumer that only looks at rep-level
+numbers would see nothing wrong with a set containing a 0.207-confidence
+reconstruction.
+
+What should happen when confidence is low, by decision type:
+
+Personal records: a rep with confidence below 0.6 does not count toward
+a personal record. A record is a claim of evidence, and a rep whose
+turning point was interpolated is not evidence.
+
+Streaks and volume totals: low-confidence reps still count. The user
+did the work; the dropout is the system's failure, and punishing a
+streak for a radio glitch teaches the user to distrust the product
+rather than the measurement. The asymmetry with records is deliberate:
+denying a streak costs the user something they earned, while granting a
+record hands them a claim the data cannot back.
+
+Recommendations: suppressed only when the specific inputs driving them
+are low confidence. A load-progression suggestion that keys off this
+session's flagged reps should not fire; general programming that keys
+off set and session counts can, since those are barely affected here
+(89 reps, 4 flagged). Blanket suppression on any dropout would disable
+recommendations for most sessions, because 23 gaps occurred in this
+one 8-minute session.
+
+Notification: no mid-set interruptions. Confidence information belongs
+in the post-session review, attached to the affected reps, which is
+where the viewer puts it. The one case for an active notification is
+sustained degradation, for example a session where the dropout rate is
+a large multiple of this session's 3.3%, because at that point the
+problem is fixable by the user (re-pair, reposition) and worth
+interrupting for.
+
 ## What the User Sees
 
 The session renders as one continuous timeline. Measured samples and
