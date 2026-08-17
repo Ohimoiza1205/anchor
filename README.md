@@ -120,68 +120,13 @@ be trusted. It does not estimate whether the reconstruction is correct.
 
 ### Key Design Decisions
 
-**Stitched recorded sets instead of generating synthetic accelerometer
-data.**
-What: used recorded lifts as the base signal.
-Why: motion structure (rep shape, redirection points, fatigue variation)
-needed to be present for the confidence system to have something worth
-scoring. Generating this synthetically would require deciding in advance
-what a rep looks like, which removes the thing being tested.
-Alternative rejected: a procedurally generated, sine-based rep signal,
-which would allow computing ground-truth reconstruction error but would
-test the generator, not the confidence system.
-Limitation remaining: no ground truth exists for what the missing signal
-should have been, so reconstruction accuracy cannot be measured directly.
-Confidence values are relative, not calibrated.
-
-**Synthetic corruption applied only to the failure, not the underlying
-signal.**
-What: dropouts are the only synthetic component; the measured signal is
-untouched outside gaps.
-Why: keeps the boundary between measured and synthetic traceable, in the
-data and in this document.
-Alternative rejected: adding synthetic noise throughout the session.
-Limitation remaining: outside injected gaps, the pipeline assumes the
-source recording is clean. Sensor noise or calibration error already
-present in the original dataset is not separated from signal.
-
-**Confidence computed from three heuristics, not a trained model.**
-What: distance decay, pre-gap volatility, and a slope-reversal check,
-combined multiplicatively.
-Why: no labeled data exists on reconstruction error to train against. A
-trained model would fit a proxy target rather than the quantity we care
-about.
-Alternative rejected: training a regression model on synthetic
-ground-truth error, generated from a synthetic base signal.
-Limitation remaining: weights for each factor were chosen by inspection,
-not fit to any outcome. A confidence of 0.44 is meaningful only relative
-to other values in this session, not as a calibrated probability.
-
-**Rep-level explanations generated from computed values, no LLM call.**
-What: explanation strings are templated from confidence, the is_real flag,
-and the turning-point boolean.
-Why: every input to the explanation is already a structured value the
-pipeline computed. An LLM call adds latency and a failure mode, the
-generated sentence not matching the underlying values, with no
-corresponding gain.
-Alternative rejected: passing rep statistics to a language model and
-prompting it to narrate them.
-Limitation remaining: explanations are limited to the fixed set of
-conditions the code checks for. A failure mode not covered by the three
-heuristics is reflected only in a lower number, not described.
-
-**Rest intervals compressed proportionally instead of fixed length or
-unmodified.**
-What: each inter-set gap is scaled by a fixed factor and clamped to a
-15 to 60 second range.
-Why: unmodified gaps ranged from about 2 minutes to 24 minutes, too long
-to review as a demo. A fixed rest length would erase the difference
-between a short break and a long one.
-Alternative rejected: replacing every rest period with the same fixed
-duration.
-Limitation remaining: displayed rest durations do not correspond to actual
-elapsed time in the original recording. This is disclosed in code comments
-but not obvious from the interface alone.
+| Decision | Why | Alternative Rejected | Limitation Remaining |
+|---|---|---|---|
+| Stitched recorded sets instead of generating synthetic accelerometer data: used recorded lifts as the base signal. | Motion structure (rep shape, redirection points, fatigue variation) needed to be present for the confidence system to have something worth scoring. Generating this synthetically would require deciding in advance what a rep looks like, which removes the thing being tested. | A procedurally generated, sine-based rep signal, which would allow computing ground-truth reconstruction error but would test the generator, not the confidence system. | No ground truth exists for what the missing signal should have been, so reconstruction accuracy cannot be measured directly. Confidence values are relative, not calibrated. |
+| Synthetic corruption applied only to the failure, not the underlying signal: dropouts are the only synthetic component; the measured signal is untouched outside gaps. | Keeps the boundary between measured and synthetic traceable, in the data and in this document. | Adding synthetic noise throughout the session. | Outside injected gaps, the pipeline assumes the source recording is clean. Sensor noise or calibration error already present in the original dataset is not separated from signal. |
+| Confidence computed from three heuristics, not a trained model: distance decay, pre-gap volatility, and a slope-reversal check, combined multiplicatively. | No labeled data exists on reconstruction error to train against. A trained model would fit a proxy target rather than the quantity we care about. | Training a regression model on synthetic ground-truth error, generated from a synthetic base signal. | Weights for each factor were chosen by inspection, not fit to any outcome. A confidence of 0.44 is meaningful only relative to other values in this session, not as a calibrated probability. |
+| Rep-level explanations generated from computed values, no LLM call: explanation strings are templated from confidence, the is_real flag, and the turning-point boolean. | Every input to the explanation is already a structured value the pipeline computed. An LLM call adds latency and a failure mode, the generated sentence not matching the underlying values, with no corresponding gain. | Passing rep statistics to a language model and prompting it to narrate them. | Explanations are limited to the fixed set of conditions the code checks for. A failure mode not covered by the three heuristics is reflected only in a lower number, not described. |
+| Rest intervals compressed proportionally instead of fixed length or unmodified: each inter-set gap is scaled by a fixed factor and clamped to a 15 to 60 second range. | Unmodified gaps ranged from about 2 minutes to 24 minutes, too long to review as a demo. A fixed rest length would erase the difference between a short break and a long one. | Replacing every rest period with the same fixed duration. | Displayed rest durations do not correspond to actual elapsed time in the original recording. This is disclosed in code comments but not obvious from the interface alone. |
 
 ### What the User Sees
 
@@ -216,6 +161,8 @@ consecutive gaps near 1.0 second is the double-count signature: liftoff
 and lockout of the same rep, counted separately. After raising the
 minimum spacing to 1.4 seconds, the count is 11 with gaps of 1.9 to 4.1
 seconds, a consistent tempo.
+
+![Rep-to-rep gap timing for the deadlift set, before the fix (1.0 second minimum spacing, 20 reps detected, a run of gaps near 1.0 second) and after the fix (1.4 second minimum spacing, 11 reps detected, gaps 1.9 to 4.1 seconds)](docs/figures/deadlift_double_count.png)
 
 Why it surprised us: bench and overhead press produce one acceleration
 peak per rep, and we tuned against those. We did not test the
@@ -264,6 +211,8 @@ across the 155 reconstructed samples. By distance to the nearest
 measured sample: 0.652 mean at 0.1 seconds or less, 0.575 at 0.1 to 0.2,
 0.457 at 0.2 to 0.4, 0.376 at 0.4 to 0.8. No reconstructed sample in
 this run sits farther than 0.8 seconds from a measured one.
+
+![Mean confidence by distance bucket with all 155 reconstructed samples overlaid as points: bucket means fall from 0.652 to 0.376 while individual samples spread from 0.15 to 0.81 inside the buckets, with the 0.6 flag threshold marked](docs/figures/confidence_by_distance.png)
 
 Why it surprised us: we expected samples one grid step from measured
 data to score close to 1.0. They average 0.652 because the volatility
