@@ -366,29 +366,76 @@ data is reconstructed rather than measured.
 
 ## Limitations
 
-Confidence values are heuristic. Weights for the three scoring factors
-were set by inspection, not fit to labeled data, because no labeled data
-exists for this task at this scope. A value of 0.44 indicates lower
-confidence than 0.9 within this session. It should not be read as a
-calibrated probability.
+These are not caveats. Each one is a reason the numbers above could
+fail to hold anywhere outside this repository.
 
-Dropout frequency, duration, and motion correlation were chosen to be
-plausible for a Bluetooth wearable. They were not fit to Fort's hardware
-logs, which we did not have access to. Dropout behavior on a specific
-device may differ.
+One participant, one day. Every number in this document comes from
+twelve sets recorded by one person in one session. The deadlift
+double-count showed that assumptions tuned on this data break the first
+time the data changes shape, and that happened within the same session.
+There is no basis for assuming any threshold here transfers to a second
+person.
 
-All tuning (volatility window size, turning-point threshold, rep-spacing
-threshold) was done against one participant's one-day session. The
-deadlift case shows these do not transfer automatically across movement
-patterns. They have not been tested across different bodies, lifting
-styles, or device placements.
+The dropouts are invented. Onset probability, duration distribution,
+and motion correlation were chosen because they seemed plausible for a
+Bluetooth radio, not derived from any log of actual BLE failures. We
+have never seen what this hardware's dropouts look like. If actual
+dropouts are longer, bursty, or correlated with something other than
+motion, the confidence distribution reported here is wrong in unknown
+ways.
 
-Rep counting uses one global minimum-spacing threshold and one low-pass
-filter cutoff across all four exercises. This is not tuned per exercise
-and would need to be before covering additional movement types.
+Nothing is validated against ground truth. No one counted the reps in
+the source videos, so the post-fix rep counts (89 total) are unverified.
+We know 20 was wrong for the deadlift set and 11 is consistent with the
+timing structure; we do not know that 11 is correct. Reconstruction
+accuracy is equally unmeasured: the samples we reconstruct were deleted
+by us, and we never compared the interpolation against what we deleted.
+That comparison is possible with this exact setup and we did not build
+it.
 
-Sensor drift, device repositioning during a session, and battery-related
-signal changes over a device's operating life are not modeled.
+Confidence is uncalibrated. A value of 0.44 means less than 0.9 within
+this session and nothing more. The weights were set by inspection. No
+outcome data ties any confidence value to an error rate, so a product
+could not currently promise a user what 0.6 means.
+
+Reconstruction is linear interpolation, full stop. No spline, no
+model-based imputation, no use of the gyroscope to inform accelerometer
+gaps. The turning-point penalty exists precisely because straight lines
+cut corners, which means the reconstruction method and the thing the
+confidence score punishes are the same thing.
+
+Peak detection is one global threshold. One minimum spacing (1.4
+seconds) and one filter cutoff for all four lifts. It already failed
+once, on the deadlift, inside the training data. A fifth exercise with
+a different peak structure would likely fail the same way, silently.
+
+Four exercises. Barbell bench, overhead press, squat, deadlift.
+Nothing about dumbbells, machines, cables, bodyweight, or anything
+unilateral. The signal structure of those movements is unexamined.
+
+Research-grade sensor, not consumer hardware. The source data comes
+from a MetaMotion research device on a fixed wrist placement. Consumer
+wearables bring worse sampling stability, more noise, and inconsistent
+placement, and this pipeline has processed none of that.
+
+Offline, not real time. The pipeline sees the complete session before
+it computes anything. Interpolation reads the sample after the gap,
+which does not exist yet when the gap is open in a live stream. The
+turning-point check needs both edges. A real-time version would need
+different reconstruction, would flag gaps at their trailing edge, and
+none of it has been designed.
+
+What would need to happen before any of this could inform a product
+decision: dropout injection replaced with distributions fit to logs
+from the target hardware; rep counts validated against
+manually-counted ground truth for multiple participants; a
+held-out-samples experiment measuring reconstruction error against the
+deleted values, which this codebase could run today and does not; a
+calibration pass tying confidence bands to observed error rates; and a
+real-time variant demonstrating the confidence signal survives losing
+the right edge of the gap. Until the first three exist, this is a
+demonstration of a scoring structure, not evidence about any specific
+device or user population.
 
 ## Future Work
 
