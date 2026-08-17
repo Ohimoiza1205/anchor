@@ -198,8 +198,10 @@ data is reconstructed rather than measured.
 
 ## Findings
 
-All numbers in this section come from `src/analyze_findings.py`, which
-reads `output/session.json` and prints them. Run it to reproduce.
+Numbers in this section come from `src/analyze_findings.py` (reads
+`output/session.json`) and `src/validate_reconstruction.py` (rebuilds
+the pipeline and compares reconstructions against the held-out true
+values). Run them to reproduce.
 
 ### Deadlift double counting
 
@@ -346,6 +348,47 @@ output, including benign ones. Whether rest-period gaps should be
 exempted from downstream penalties is a product decision, discussed
 under Product Implications; the pipeline itself does not exempt them.
 
+### Reconstruction error measured against held-out values
+
+Observation: because the pipeline deletes samples itself, the true
+values of every reconstructed sample are known, and reconstruction
+error can be measured directly. We built that comparison
+(`src/validate_reconstruction.py`) after an internal review pointed out
+it was possible and missing.
+
+Evidence: over the 155 dropped samples, mean absolute error on acc_r is
+0.1322 g (median 0.0317, 90th percentile 0.4030, max 0.9463). Spearman
+correlation between confidence and absolute error is -0.392
+(p = 4.5e-07), stronger than distance to the nearest measured sample
+alone (rho = 0.184). Of dropped samples with confidence below 0.35,
+72.5% sit above the session's median error; for confidence at or above
+0.6, 36.4% do. Samples with the turning-point flag average 0.1427 g
+error against 0.1285 g without it.
+
+Two honest caveats. First, all 60 rest-period dropped samples show
+exactly 0.0 error, but that is an artifact: rest periods in this
+prototype are a synthetic constant signal, so interpolating them is
+trivially exact. All informative error lives in-set (0.2157 g mean over
+95 samples). Second, the relationship is not monotonic across bands:
+the 0.4 to 0.6 confidence band has the highest mean error (0.2179 g)
+and contains the single worst error (0.9463 g), worse than the bands
+below it. Confidence ranks reconstructions usefully in aggregate; it
+does not bound the error of any individual sample.
+
+Why it surprised us: we expected either a clean monotonic relationship
+or none. Getting a moderate rank correlation with a misbehaving middle
+band is the more instructive result: the heuristics point in the right
+direction, and a single worst-case reconstruction can still hide behind
+a middling score.
+
+Impact on system design: the 0.6 threshold used for flagging and for
+the personal-record gate has some empirical support now (error medians
+collapse to 0.0 above 0.6), but the middle band's worst-case behavior
+is an argument for treating the threshold as a rank cutoff, not a
+guarantee. This experiment used the same invented dropouts as
+everything else, so it validates internal consistency, not real-world
+performance.
+
 ## Product Implications
 
 If this pipeline lived inside a shipping product, here is what we think
@@ -415,14 +458,15 @@ dropouts are longer, bursty, or correlated with something other than
 motion, the confidence distribution reported here is wrong in unknown
 ways.
 
-Nothing is validated against ground truth. No one counted the reps in
-the source videos, so the post-fix rep counts (89 total) are unverified.
-We know 20 was wrong for the deadlift set and 11 is consistent with the
-timing structure; we do not know that 11 is correct. Reconstruction
-accuracy is equally unmeasured: the samples we reconstruct were deleted
-by us, and we never compared the interpolation against what we deleted.
-That comparison is possible with this exact setup and we did not build
-it.
+Rep counts are not validated against ground truth. No one counted the
+reps in the source videos, so the post-fix rep counts (89 total) are
+unverified. We know 20 was wrong for the deadlift set and 11 is
+consistent with the timing structure; we do not know that 11 is
+correct. Reconstruction error, unlike rep counts, is now measured
+against the held-out true values (see Findings), but that measurement
+inherits the invented dropout model: it shows the confidence score
+ranks reconstructions sensibly under our synthetic failures, not that
+it would under real ones.
 
 Confidence is uncalibrated. A value of 0.44 means less than 0.9 within
 this session and nothing more. The weights were set by inspection. No
@@ -459,14 +503,14 @@ none of it has been designed.
 What would need to happen before any of this could inform a product
 decision: dropout injection replaced with distributions fit to logs
 from the target hardware; rep counts validated against
-manually-counted ground truth for multiple participants; a
-held-out-samples experiment measuring reconstruction error against the
-deleted values, which this codebase could run today and does not; a
-calibration pass tying confidence bands to observed error rates; and a
-real-time variant demonstrating the confidence signal survives losing
-the right edge of the gap. Until the first three exist, this is a
-demonstration of a scoring structure, not evidence about any specific
-device or user population.
+manually-counted ground truth for multiple participants; the held-out
+reconstruction-error experiment rerun on those realistic dropouts (the
+experiment now exists, but its current results only cover our invented
+failures); a calibration pass tying confidence bands to observed error
+rates; and a real-time variant demonstrating the confidence signal
+survives losing the right edge of the gap. Until the first two exist,
+this is a demonstration of a scoring structure, not evidence about any
+specific device or user population.
 
 ## Future Work
 
