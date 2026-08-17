@@ -10,7 +10,19 @@ counts are computed on the reconstructed stream, and each rep carries the
 confidence of the samples it spans, with a one-line reason attached when
 that confidence is low.
 
-## The Problem
+## Table of Contents
+
+- [Problem](#problem)
+- [Dataset](#dataset)
+- [Approach](#approach)
+  - [Key Design Decisions](#key-design-decisions)
+  - [What the User Sees](#what-the-user-sees)
+- [Findings](#findings)
+- [Product Implications](#product-implications)
+- [Limitations](#limitations)
+- [Future Work](#future-work)
+
+## Problem
 
 Wearable sensors lose connection to the host device intermittently, more
 often during high-motion periods than during rest. When that happens, the
@@ -18,7 +30,7 @@ system has to produce a continuous value for whatever consumes the stream
 downstream. Most pipelines fill the gap with interpolation and report the
 result with the same certainty as measured data.
 
-## Why This Problem Matters
+### Why This Problem Matters
 
 Everything in this section is grounded in what this prototype produced;
 none of it is a claim about any specific product.
@@ -58,6 +70,21 @@ per-rep values shown in the viewer. The same number could gate anything
 downstream that is about to trust a reconstructed region, which is what
 the Product Implications section is about.
 
+## Dataset
+
+Raw recordings come from the open dataset in
+EfthimiosVlahos/SmartLift-Analysis-Project on GitHub, itself a rebuild
+of a wearable strength-training study from Vrije Universiteit Amsterdam.
+Data was recorded with an MbientLab MetaMotion sensor worn to simulate
+smartwatch placement: accelerometer at 12.5 Hz, gyroscope at 25 Hz.
+
+This project uses one participant's single-day session: participant A,
+2019-01-11, twelve sets across bench press, overhead press, squat, and
+deadlift, stored as 24 CSV files (one accelerometer and one gyroscope
+file per set) in `data/raw/MetaMotion/`. The raw files are unmodified;
+all corruption and reconstruction happens downstream in this pipeline.
+See `data/SOURCE.md` for provenance.
+
 ## Approach
 
 The pipeline starts from twelve sets recorded on a single day from one
@@ -87,7 +114,11 @@ confidence below 0.6, or reps where the turning-point check fired, get a
 one-line explanation generated from the same computed values, with no
 external model call.
 
-## Key Design Decisions
+Throughout, confidence and correctness are treated as separate
+properties. Confidence estimates how much a given reconstruction should
+be trusted. It does not estimate whether the reconstruction is correct.
+
+### Key Design Decisions
 
 **Stitched recorded sets instead of generating synthetic accelerometer
 data.**
@@ -151,6 +182,19 @@ duration.
 Limitation remaining: displayed rest durations do not correspond to actual
 elapsed time in the original recording. This is disclosed in code comments
 but not obvious from the interface alone.
+
+### What the User Sees
+
+The session renders as one continuous timeline. Measured samples and
+reconstructed samples are visually distinct, with a confidence value
+attached to each point on the reconstructed portions.
+
+Each detected rep displays its own confidence rather than a session
+average. Reps above the 0.6 threshold, without a turning-point flag,
+display with no further explanation. Reps below that threshold, or with
+the turning-point flag set, display a one-line reason: a sensor gap
+occurred at a likely turning point in the movement, so part of that rep's
+data is reconstructed rather than measured.
 
 ## Findings
 
@@ -351,19 +395,6 @@ a large multiple of this session's 3.3%, because at that point the
 problem is fixable by the user (re-pair, reposition) and worth
 interrupting for.
 
-## What the User Sees
-
-The session renders as one continuous timeline. Measured samples and
-reconstructed samples are visually distinct, with a confidence value
-attached to each point on the reconstructed portions.
-
-Each detected rep displays its own confidence rather than a session
-average. Reps above the 0.6 threshold, without a turning-point flag,
-display with no further explanation. Reps below that threshold, or with
-the turning-point flag set, display a one-line reason: a sensor gap
-occurred at a likely turning point in the movement, so part of that rep's
-data is reconstructed rather than measured.
-
 ## Limitations
 
 These are not caveats. Each one is a reason the numbers above could
@@ -450,17 +481,3 @@ level.
 
 The pipeline has not been run against more than one participant or more
 than one recording day.
-
-## Key Insights
-
-Distance from a measured sample alone would not have flagged the deadlift
-case. The samples nearest a gap can be close in time and still fall on
-either side of a turning point the interpolation missed.
-
-The deadlift error did not produce an error state. It produced a wrong
-count that looked like every correct one next to it. It was found by
-checking rep timing, not by checking the count.
-
-Confidence and correctness were treated as separate properties throughout.
-Confidence estimates how much a given reconstruction should be trusted. It
-does not estimate whether the reconstruction is correct.
