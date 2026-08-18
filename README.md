@@ -10,6 +10,14 @@ counts are computed on the reconstructed stream, and each rep carries the
 confidence of the samples it spans, with a one-line reason attached when
 that confidence is low.
 
+```mermaid
+flowchart LR
+    A[Workout data] --> B[Missing samples]
+    B --> C[Confidence estimate]
+    C --> D[Product decision]
+    D --> E[User trust]
+```
+
 ## Table of Contents
 
 - [Problem](#problem)
@@ -100,6 +108,20 @@ rest. Gap duration is drawn from a lognormal distribution, clipped to
 0.3 to 3.0 seconds. Everything before this step is measured data.
 Everything from this step forward is synthetic.
 
+```mermaid
+flowchart TD
+    A[Sensor data] --> B[Session reconstruction]
+    B --> C[Dropout simulation]
+    C --> D[Reconstruction]
+    D --> E[Confidence engine]
+    E --> F[Rep detection]
+    F --> G[Product decision layer]
+    G --> H[User experience]
+    subgraph synthetic [synthetic, engineered]
+        C
+    end
+```
+
 Missing samples are filled with linear interpolation. Each reconstructed
 sample is scored on three factors: time distance to the nearest measured
 sample, standard deviation of the measured signal in the second before the
@@ -122,7 +144,7 @@ be trusted. It does not estimate whether the reconstruction is correct.
 
 | Decision | Why | Alternative Rejected | Limitation Remaining |
 |---|---|---|---|
-| Stitched recorded sets instead of generating synthetic accelerometer data: used recorded lifts as the base signal. | Motion structure (rep shape, redirection points, fatigue variation) needed to be present for the confidence system to have something worth scoring. Generating this synthetically would require deciding in advance what a rep looks like, which removes the thing being tested. | A procedurally generated, sine-based rep signal, which would allow computing ground-truth reconstruction error but would test the generator, not the confidence system. | No ground truth exists for what the missing signal should have been, so reconstruction accuracy cannot be measured directly. Confidence values are relative, not calibrated. |
+| Stitched recorded sets instead of generating synthetic accelerometer data: used recorded lifts as the base signal. | Motion structure (rep shape, redirection points, fatigue variation) needed to be present for the confidence system to have something worth scoring. Generating this synthetically would require deciding in advance what a rep looks like, which removes the thing being tested. | A procedurally generated, sine-based rep signal, which would allow computing ground-truth reconstruction error but would test the generator, not the confidence system. | Reconstruction accuracy was later measured directly against held-out true values, made possible only because the dropouts are synthetic (see Findings). This validates internal consistency under our invented failure model, not accuracy against real hardware dropouts. Confidence values are relative, not calibrated. |
 | Synthetic corruption applied only to the failure, not the underlying signal: dropouts are the only synthetic component; the measured signal is untouched outside gaps. | Keeps the boundary between measured and synthetic traceable, in the data and in this document. | Adding synthetic noise throughout the session. | Outside injected gaps, the pipeline assumes the source recording is clean. Sensor noise or calibration error already present in the original dataset is not separated from signal. |
 | Confidence computed from three heuristics, not a trained model: distance decay, pre-gap volatility, and a slope-reversal check, combined multiplicatively. | No labeled data exists on reconstruction error to train against. A trained model would fit a proxy target rather than the quantity we care about. | Training a regression model on synthetic ground-truth error, generated from a synthetic base signal. | Weights for each factor were chosen by inspection, not fit to any outcome. A confidence of 0.44 is meaningful only relative to other values in this session, not as a calibrated probability. |
 | Rep-level explanations generated from computed values, no LLM call: explanation strings are templated from confidence, the is_real flag, and the turning-point boolean. | Every input to the explanation is already a structured value the pipeline computed. An LLM call adds latency and a failure mode, the generated sentence not matching the underlying values, with no corresponding gain. | Passing rep statistics to a language model and prompting it to narrate them. | Explanations are limited to the fixed set of conditions the code checks for. A failure mode not covered by the three heuristics is reflected only in a lower number, not described. |
@@ -350,6 +372,16 @@ stretches. The user's mental model shifts from "the watch counted 9" to
 "the watch measured 8 and estimated 1," which is the true state of the
 data in a session like this one.
 
+```mermaid
+flowchart LR
+    subgraph before [Without Anchor]
+        A1[Wrist sensor reading] --> A2["'8 reps counted'"]
+    end
+    subgraph after [With Anchor]
+        B1[Wrist sensor reading] --> B2["confidence: 0.53"] --> B3["'8 reps counted, 1 flagged:<br/>reconstructed at a likely turning point'"]
+    end
+```
+
 What changes for downstream systems: every sample and every rep carries
 `is_real` and `confidence` fields, and consumers are expected to have an
 explicit policy for low-confidence input rather than a default of
@@ -371,6 +403,14 @@ session the gate excludes 1 of 89 reps, the 0.533-confidence rep in
 keys on confidence only, per the stated policy; the validation
 experiment's middle-band caveat (worst-case error can hide above the
 cutoff) applies to it and is documented under Findings.
+
+```mermaid
+flowchart TD
+    A[Rep detected] --> B[Confidence scored]
+    B -->|"≥ 0.6"| C[counts_toward_pr = true]
+    B -->|"< 0.6"| D[counts_toward_pr = false<br/>reason attached]
+    D --> E["1 of 89 reps excluded this session<br/>(ohp-heavy1-rpe8, confidence 0.533)"]
+```
 
 Streaks and volume totals: low-confidence reps still count. The user
 did the work; the dropout is the system's failure, and punishing a
