@@ -2,13 +2,14 @@
 
 Confidence-aware reconstruction for wearable sensor data.
 
-Anchor reconstructs a wrist-worn accelerometer and gyroscope session from a
-public barbell-training dataset, injects synthetic Bluetooth dropouts on
-top of the recorded signal, reconstructs the missing samples with
-interpolation, and scores each reconstructed sample for confidence. Rep
-counts are computed on the reconstructed stream, and each rep carries the
-confidence of the samples it spans, with a one-line reason attached when
-that confidence is low.
+Anchor asks what a fitness product should do when it is not fully
+confident in its own measurements. The initial direction explored workout
+coaching and insight generation, and was dropped: it never tested whether
+the underlying measurements could be trusted, which is the more basic
+question a wearable depends on. Using recorded wrist sensor data, Anchor
+reconstructs missing samples, scores confidence in each reconstruction,
+and lets that confidence gate one concrete decision: whether a rep counts
+toward a personal record.
 
 ```mermaid
 flowchart LR
