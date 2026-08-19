@@ -398,7 +398,9 @@ a personal record. A record is a claim of evidence, and a rep whose
 turning point was interpolated is not evidence. This is the one policy
 in this section that is implemented rather than described: every rep in
 the pipeline output carries a `counts_toward_pr` field, with a
-`counts_toward_pr_reason` string attached when it is false. In this
+`counts_toward_pr_reason` string attached when it is false. The gate
+was added specifically after a founder-style self-review noted that
+confidence was being computed and used for nothing. In this
 session the gate excludes 1 of 89 reps, the 0.533-confidence rep in
 `ohp-heavy1-rpe8` whose turning point fell inside a dropout. The gate
 keys on confidence only, per the stated policy; the validation
