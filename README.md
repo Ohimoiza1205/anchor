@@ -56,8 +56,8 @@ it.
 Exercise data gets treated as objective truth once it is a number on a
 screen. The deadlift case shows why that is dangerous: the detector
 returned 20 reps for an 11-rep set, and nothing about the number looked
-wrong. It was not an error state, it was a wrong answer formatted
-exactly like a right one. Any feature that consumed that count, a
+wrong. The system raised no error; it produced a wrong count in the
+same format as a correct one. Any feature that consumed that count, a
 history view, a volume total, a progress trend, would have inherited the
 error silently.
 
@@ -245,8 +245,8 @@ gap.
 
 Impact on system design: rep confidence is the mean over the rep window,
 so a single short gap inside a rep pulls the rep visibly below 1.0. That
-is intentional and we kept it: adjacency to measured data should not
-launder a suspect gap back to full confidence.
+is intentional and we kept it: being next to measured data should not
+restore full confidence to a gap the other checks flagged as suspect.
 
 ### Differences between lifts
 
@@ -292,8 +292,8 @@ notice made the point concrete. Visual inspection of the reconstructed
 trace carries no information about reconstruction quality.
 
 Impact on system design: the viewer shows confidence explicitly rather
-than relying on the trace looking wrong, because the trace never looks
-wrong.
+than relying on the appearance of the trace, since low-quality
+reconstructions are not visually distinguishable from measured data.
 
 ### Where confidence stays highest through a dropout
 
@@ -337,15 +337,16 @@ alone (rho = 0.184). Of dropped samples with confidence below 0.35,
 0.6, 36.4% do. Samples with the turning-point flag average 0.1427 g
 error against 0.1285 g without it.
 
-Two honest caveats. First, all 60 rest-period dropped samples show
+Two caveats. First, all 60 rest-period dropped samples show
 exactly 0.0 error, but that is an artifact: rest periods in this
 prototype are a synthetic constant signal, so interpolating them is
 trivially exact. All informative error lives in-set (0.2157 g mean over
 95 samples). Second, the relationship is not monotonic across bands:
 the 0.4 to 0.6 confidence band has the highest mean error (0.2179 g)
 and contains the single worst error (0.9463 g), worse than the bands
-below it. Confidence ranks reconstructions usefully in aggregate; it
-does not bound the error of any individual sample.
+below it. In aggregate, confidence provides a useful ranking of
+reconstructions, but it puts no upper limit on the error of any
+individual sample.
 
 Why it surprised us: we expected either a clean monotonic relationship
 or none. Getting a moderate rank correlation with a misbehaving middle
@@ -450,13 +451,13 @@ time the data changes shape, and that happened within the same session.
 There is no basis for assuming any threshold here transfers to a second
 person.
 
-The dropouts are invented. Onset probability, duration distribution,
-and motion correlation were chosen because they seemed plausible for a
-Bluetooth radio, not derived from any log of actual BLE failures. We
-have never seen what this hardware's dropouts look like. If actual
-dropouts are longer, bursty, or correlated with something other than
-motion, the confidence distribution reported here is wrong in unknown
-ways.
+Every dropout in this session was invented rather than observed: onset
+probability, duration distribution, and motion correlation were chosen
+because they seemed plausible for a Bluetooth radio, not derived from
+any log of actual BLE failures. We have never seen what this
+hardware's dropouts look like. If actual dropouts are longer, bursty,
+or correlated with something other than motion, the confidence
+distribution reported here is wrong in unknown ways.
 
 Rep counts are not validated against ground truth. No one counted the
 reps in the source videos, so the post-fix rep counts (89 total) are
@@ -468,10 +469,11 @@ inherits the invented dropout model: it shows the confidence score
 ranks reconstructions sensibly under our synthetic failures, not that
 it would under real ones.
 
-Confidence is uncalibrated. A value of 0.44 means less than 0.9 within
-this session and nothing more. The weights were set by inspection. No
-outcome data ties any confidence value to an error rate, so a product
-could not currently promise a user what 0.6 means.
+Because the weights were set by inspection, confidence is
+uncalibrated: a value of 0.44 means less than 0.9 within this session
+and nothing more. No outcome data ties any confidence value to an
+error rate, so a product could not currently promise a user what 0.6
+means.
 
 Reconstruction is linear interpolation, full stop. No spline, no
 model-based imputation, no use of the gyroscope to inform accelerometer
@@ -484,18 +486,19 @@ seconds) and one filter cutoff for all four lifts. It already failed
 once, on the deadlift, inside the training data. A fifth exercise with
 a different peak structure would likely fail the same way, silently.
 
-Four exercises. Barbell bench, overhead press, squat, deadlift.
-Nothing about dumbbells, machines, cables, bodyweight, or anything
-unilateral. The signal structure of those movements is unexamined.
+Only four exercises are represented: barbell bench, overhead press,
+squat, and deadlift. Nothing about dumbbells, machines, cables,
+bodyweight, or anything unilateral. The signal structure of those
+movements is unexamined.
 
 Research-grade sensor, not consumer hardware. The source data comes
 from a MetaMotion research device on a fixed wrist placement. Consumer
 wearables bring worse sampling stability, more noise, and inconsistent
 placement, and this pipeline has processed none of that.
 
-Offline, not real time. The pipeline sees the complete session before
-it computes anything. Interpolation reads the sample after the gap,
-which does not exist yet when the gap is open in a live stream. The
+Everything here runs offline: the pipeline sees the complete session
+before it computes anything. Interpolation reads the sample after the
+gap, which does not exist yet when the gap is open in a live stream. The
 turning-point check needs both edges. A real-time version would need
 different reconstruction, would flag gaps at their trailing edge, and
 none of it has been designed.
